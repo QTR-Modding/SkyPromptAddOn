@@ -3,29 +3,31 @@
 #include <numbers>
 #include <cmath>
 #include <corecrt_math.h>
-#include "Renderer.h"
+#include <imgui.h>
 
 namespace SkyPrompt::AddOns {
 
     namespace SpecialEffects {
 
-        struct Specials {
+        struct SpecialsView {
             uint32_t effectID = 0;
-            std::vector<uint32_t> integers;
-            std::vector<std::string> strings;
-            std::vector<float> floats;
-            std::vector<bool> bools;
+            std::span<const uint32_t>  integers;
+            std::span<const std::string> strings;
+            std::span<const float>      floats;
+            std::span<const uint8_t>    bools;
         };
 
+
         namespace {
+
             void DrawGradientArc(ImDrawList* draw_list, const ImVec2 center, const float radius, const float max_thickness, const ImU32 color,
-                                 const float start_angle, const float total_angle, const bool enable_glow = false,
+                                 const float start_angle, const float total_angle, const bool enable_glow, const float min_glow_thickness,
                                  const float glow_thickness_multiplier = 3.0f, const float glow_alpha_multiplier = 0.5f) {
+
                 constexpr int num_segments = 400;
 
                 if (enable_glow) {
                     constexpr int num_glow_layers = 5;
-                    const float min_glow_thickness = 0.5f * ImGui::Renderer::GetResolutionScale();
 
                     for (int layer = 0; layer < num_glow_layers; ++layer) {
                         const float layer_progress = static_cast<float>(layer) / (num_glow_layers - 1);
@@ -43,8 +45,7 @@ namespace SkyPrompt::AddOns {
                             const float gradient_alpha = sin(progress * std::numbers::pi_v<float>);
 
                             const ImU32 glow_segment_color =
-                                ImGui::GetColorU32(ImVec4((color >> 0 & 0xFF) / 255.0f,
-                                                          (color >> 8 & 0xFF) / 255.0f,
+                                ImGui::GetColorU32(ImVec4((color >> 0 & 0xFF) / 255.0f, (color >> 8 & 0xFF) / 255.0f,
                                                           (color >> 16 & 0xFF) / 255.0f, gradient_alpha * current_alpha_scale));
 
                             const float angle = start_angle + progress * total_angle;
@@ -63,9 +64,8 @@ namespace SkyPrompt::AddOns {
 
                     const float gradient_alpha = sin(progress * std::numbers::pi_v<float>);
 
-                    const ImU32 segment_color = ImGui::GetColorU32(ImVec4(
-                        (color >> 0 & 0xFF) / 255.0f, (color >> 8 & 0xFF) / 255.0f,
-                        (color >> 16 & 0xFF) / 255.0f, gradient_alpha));
+                    const ImU32 segment_color = ImGui::GetColorU32(ImVec4((color >> 0 & 0xFF) / 255.0f, (color >> 8 & 0xFF) / 255.0f,
+                                                                          (color >> 16 & 0xFF) / 255.0f, gradient_alpha));
 
                     const float angle = start_angle + progress * total_angle;
                     auto p2_main = ImVec2(center.x + cosf(angle) * radius, center.y + sinf(angle) * radius);
@@ -76,21 +76,25 @@ namespace SkyPrompt::AddOns {
         }
 
 
-        inline void VinyArcs(ImDrawList* background_draw_list, const ImVec2 line_center, const float semicircle_radius, const float thickness, const float line_start_angle, const float line_total_arc_angle, const std::vector<uint32_t>& colors) {
+        inline void VinyArcs(ImDrawList* background_draw_list, const float resScale, const ImVec2 line_center,
+                             const float semicircle_radius, const float thickness, const float line_start_angle,
+                             const float line_total_arc_angle, const SpecialsView& specials) {
 
-            const auto n_colors = colors.size();
-            const auto color1 = n_colors > 0 ? colors[0] : IM_COL32(255, 204, 0, 255);
-            const auto color2 = n_colors > 1 ? colors[1] : IM_COL32(200, 160, 0, 255);
-            const auto color3 = n_colors > 2 ? colors[2] : IM_COL32(200, 160, 0, 255);
+            const auto min_glow_thickness = 0.5f * resScale;
+			const auto n_colors = specials.integers.size();
+			const auto color1 = n_colors > 0 ? static_cast<ImU32>(specials.integers[0]) : IM_COL32(255, 204, 0, 255);
+			const auto color2 = n_colors > 1 ? static_cast<ImU32>(specials.integers[1]) : IM_COL32(200, 160, 0, 255);
+			const auto color3 = n_colors > 2 ? static_cast<ImU32>(specials.integers[2]) : IM_COL32(200, 160, 0, 255);
+
             DrawGradientArc(background_draw_list, line_center, semicircle_radius, thickness, color1,
-                            line_start_angle * 0.2f, line_total_arc_angle * 0.2f, true, 6.0f, 0.4f);
+                            line_start_angle * 0.2f, line_total_arc_angle * 0.2f, true, min_glow_thickness, 6.0f, 0.4f);
 
             DrawGradientArc(background_draw_list, line_center, semicircle_radius - 20.0f, thickness * 0.4f,
-                            color2, line_start_angle * 0.4f, line_total_arc_angle * 0.4f, true, 10.5f,
+                            color2, line_start_angle * 0.4f, line_total_arc_angle * 0.4f, true, min_glow_thickness, 10.5f,
                             0.8f);
 
             DrawGradientArc(background_draw_list, line_center, semicircle_radius - 40.0f, thickness,
-                            color3, line_start_angle * 0.65f, line_total_arc_angle * 0.65f, true, 4.2f,
+                            color3, line_start_angle * 0.65f, line_total_arc_angle * 0.65f, true, min_glow_thickness, 4.2f,
                             0.6f);
         }
 
@@ -98,10 +102,9 @@ namespace SkyPrompt::AddOns {
 
 
 
-    inline void RenderSpecialEffect(const SpecialEffects::Specials& specials, const ImVec2 a_center, const float a_size) {
-        switch (specials.effectID) {
+    inline void RenderSpecialEffect(const SpecialEffects::SpecialsView& a_specials, const ImVec2 a_center, const float a_size, const float resScale) {
+        switch (a_specials.effectID) {
             case 1: {
-                const auto resScale = ImGui::Renderer::GetResolutionScale();
                 const float semicircle_radius = a_size * 4 * resScale;
                 const float thickness         = 3.0f * resScale;
                 constexpr float line_start_angle   = -std::numbers::pi_v<float> / 2.0f;
@@ -109,12 +112,13 @@ namespace SkyPrompt::AddOns {
 
                 SpecialEffects::VinyArcs(
                     ImGui::GetBackgroundDrawList(),
+                    resScale,
                     a_center - ImVec2(semicircle_radius/2.f,0),
                     semicircle_radius,
                     thickness,
                     line_start_angle,
                     line_total_arc_angle,
-                    specials.integers
+                    a_specials
                     );
                 break;
             }
