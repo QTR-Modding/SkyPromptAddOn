@@ -8,6 +8,15 @@ namespace SkyPrompt {
     namespace AddOns{
 
         namespace SpecialEffects {
+
+            struct Specials {
+                uint32_t effectID = 0;
+                std::vector<uint32_t> integers;
+                std::vector<std::string> strings;
+                std::vector<float> floats;
+                std::vector<bool> bools;
+            };
+
             namespace {
                 void DrawGradientArc(ImDrawList* draw_list, const ImVec2 center, const float radius, const float max_thickness, const ImU32 color,
                     const float start_angle, const float total_angle, const bool enable_glow = false,
@@ -65,25 +74,30 @@ namespace SkyPrompt {
             }
 
 
-            inline void VinyArcs(ImDrawList* background_draw_list, const ImVec2 line_center, const float semicircle_radius, const float thickness, const float line_start_angle, const float line_total_arc_angle) {
-                    DrawGradientArc(background_draw_list, line_center, semicircle_radius, thickness, IM_COL32(255, 204, 0, 255),
-                        line_start_angle * 0.2f, line_total_arc_angle * 0.2f, true, 6.0f, 0.4f);
+            inline void VinyArcs(ImDrawList* background_draw_list, const ImVec2 line_center, const float semicircle_radius, const float thickness, const float line_start_angle, const float line_total_arc_angle, const std::vector<uint32_t>& colors) {
 
-                    DrawGradientArc(background_draw_list, line_center, semicircle_radius - 20.0f, thickness * 0.4f,
-                        IM_COL32(200, 160, 0, 255), line_start_angle * 0.4f, line_total_arc_angle * 0.4f, true, 10.5f,
-                        0.8f);
+				const auto n_colors = colors.size();
+				const auto color1 = n_colors > 0 ? colors[0] : IM_COL32(255, 204, 0, 255);
+				const auto color2 = n_colors > 1 ? colors[1] : IM_COL32(200, 160, 0, 255);
+				const auto color3 = n_colors > 2 ? colors[2] : IM_COL32(200, 160, 0, 255);
+                DrawGradientArc(background_draw_list, line_center, semicircle_radius, thickness, color1,
+                    line_start_angle * 0.2f, line_total_arc_angle * 0.2f, true, 6.0f, 0.4f);
 
-                    DrawGradientArc(background_draw_list, line_center, semicircle_radius - 40.0f, thickness,
-                        IM_COL32(200, 160, 0, 255), line_start_angle * 0.65f, line_total_arc_angle * 0.65f, true, 4.2f,
-                        0.6f);
+                DrawGradientArc(background_draw_list, line_center, semicircle_radius - 20.0f, thickness * 0.4f,
+                    color2, line_start_angle * 0.4f, line_total_arc_angle * 0.4f, true, 10.5f,
+                    0.8f);
+
+                DrawGradientArc(background_draw_list, line_center, semicircle_radius - 40.0f, thickness,
+                    color3, line_start_angle * 0.65f, line_total_arc_angle * 0.65f, true, 4.2f,
+                    0.6f);
             }
 
         }
 
 
 
-        inline void RenderSpecialEffect(const uint32_t a_effectID, const ImVec2 a_center, const float a_size) {
-            switch (a_effectID) {
+        inline void RenderSpecialEffect(const SpecialEffects::Specials& specials, const ImVec2 a_center, const float a_size) {
+            switch (specials.effectID) {
                 case 1: {
                     const auto resScale = ImGui::Renderer::GetResolutionScale();
                     const float semicircle_radius = a_size * 4 * resScale;
@@ -97,7 +111,8 @@ namespace SkyPrompt {
                         semicircle_radius,
                         thickness,
                         line_start_angle,
-                        line_total_arc_angle
+                        line_total_arc_angle,
+						specials.integers
                     );
                     break;
                 }
