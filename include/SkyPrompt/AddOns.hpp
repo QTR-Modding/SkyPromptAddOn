@@ -24,7 +24,7 @@ namespace SkyPrompt::AddOns {
                                  const float start_angle, const float total_angle, const bool enable_glow, const float min_glow_thickness,
                                  const float glow_thickness_multiplier = 3.0f, const float glow_alpha_multiplier = 0.5f) {
 
-                constexpr int num_segments = 400;
+                constexpr int num_segments = 600;
 
                 if (enable_glow) {
                     constexpr int num_glow_layers = 5;
@@ -76,7 +76,7 @@ namespace SkyPrompt::AddOns {
         }
 
 
-        inline void VinyArcs(ImDrawList* background_draw_list, const float resScale, const ImVec2 line_center,
+        inline void VinyArcs(ImDrawList* background_draw_list, const float resScale, ImVec2 line_center,
                              const float semicircle_radius, const float thickness, const float line_start_angle,
                              const float line_total_arc_angle, const SpecialsView& specials) {
 
@@ -86,16 +86,31 @@ namespace SkyPrompt::AddOns {
 			const auto color2 = n_colors > 1 ? static_cast<ImU32>(specials.integers[1]) : IM_COL32(200, 160, 0, 255);
 			const auto color3 = n_colors > 2 ? static_cast<ImU32>(specials.integers[2]) : IM_COL32(200, 160, 0, 255);
 
-            DrawGradientArc(background_draw_list, line_center, semicircle_radius, thickness, color1,
-                            line_start_angle * 0.2f, line_total_arc_angle * 0.2f, true, min_glow_thickness, 6.0f, 0.4f);
+			const auto n_margins = specials.floats.size();
+			const auto margin1 = n_margins > 0 ? specials.floats[0] : 0.0f;
+			const auto margin2 = n_margins > 1 ? specials.floats[1] : 0.0f;
+			line_center += ImVec2{ margin1 * resScale, margin2 * resScale };
 
-            DrawGradientArc(background_draw_list, line_center, semicircle_radius - 20.0f, thickness * 0.4f,
-                            color2, line_start_angle * 0.4f, line_total_arc_angle * 0.4f, true, min_glow_thickness, 10.5f,
-                            0.8f);
+			const auto n_bools = specials.bools.size();
+			const auto enable_1 = n_bools > 0 ? specials.bools[0] : true;
+			const auto enable_2 = n_bools > 1 ? specials.bools[1] : true;
+            const auto enable_3 = n_bools > 2 ? specials.bools[2] : true;
 
-            DrawGradientArc(background_draw_list, line_center, semicircle_radius - 40.0f, thickness,
-                            color3, line_start_angle * 0.65f, line_total_arc_angle * 0.65f, true, min_glow_thickness, 4.2f,
-                            0.6f);
+
+            if (enable_3) {
+                DrawGradientArc(background_draw_list, line_center, semicircle_radius, thickness, color1,
+                                line_start_angle * 0.2f, line_total_arc_angle * 0.2f, true, min_glow_thickness, 6.0f, 0.4f);
+			}
+            if (enable_2) {
+                DrawGradientArc(background_draw_list, line_center, semicircle_radius - 20.0f, thickness * 0.4f,
+                                color2, line_start_angle * 0.4f, line_total_arc_angle * 0.4f, true, min_glow_thickness, 10.5f,
+                                0.8f);
+            }
+            if (enable_1) {
+                DrawGradientArc(background_draw_list, line_center, semicircle_radius - 40.0f, thickness,
+                                color3, line_start_angle * 0.65f, line_total_arc_angle * 0.65f, true, min_glow_thickness, 4.2f,
+                                0.6f);
+            }
         }
 
     }
