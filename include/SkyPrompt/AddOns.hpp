@@ -2,7 +2,6 @@
 #include <algorithm>
 #include <numbers>
 #include <cmath>
-#include <corecrt_math.h>
 #include <imgui.h>
 
 namespace SkyPrompt::AddOns {
