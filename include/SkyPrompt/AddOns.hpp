@@ -102,12 +102,12 @@ namespace SkyPrompt::AddOns {
                                 line_start_angle * 0.2f, line_total_arc_angle * 0.2f, true, min_glow_thickness, 6.0f, 0.4f);
 			}
             if (enable_2) {
-                DrawGradientArc(background_draw_list, line_center, semicircle_radius - 20.0f, thickness * 0.4f,
+                DrawGradientArc(background_draw_list, line_center, semicircle_radius - 20.0f * resScale, thickness * 0.4f,
                                 color2, line_start_angle * 0.4f, line_total_arc_angle * 0.4f, true, min_glow_thickness, 10.5f,
                                 0.8f);
             }
             if (enable_1) {
-                DrawGradientArc(background_draw_list, line_center, semicircle_radius - 40.0f, thickness,
+                DrawGradientArc(background_draw_list, line_center, semicircle_radius - 40.0f * resScale, thickness,
                                 color3, line_start_angle * 0.65f, line_total_arc_angle * 0.65f, true, min_glow_thickness, 4.2f,
                                 0.6f);
             }
@@ -120,7 +120,7 @@ namespace SkyPrompt::AddOns {
     inline void RenderSpecialEffect(const SpecialEffects::SpecialsView& a_specials, const ImVec2 a_center, const float a_size, const float resScale) {
         switch (a_specials.effectID) {
             case 1: {
-                const float semicircle_radius = a_size * 4 * resScale;
+                const float semicircle_radius = a_size * 4;
                 const float thickness         = 3.0f * resScale;
                 constexpr float line_start_angle   = -std::numbers::pi_v<float> / 2.0f;
                 constexpr float line_total_arc_angle = std::numbers::pi_v<float>;
