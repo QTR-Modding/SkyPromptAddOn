@@ -20,7 +20,21 @@ all visible List rows. Requires a SkyPrompt build with per-text effect support.
 
 Optional: `special_integers[0]` sets the background color as a packed ABGR
 integer. For example, `"special_integers": [2147483648]` is black with alpha
-128, the default. The other parameter arrays are unused by this effect.
+128, the default.
+
+Optional: `special_floats` controls horizontal padding, vertical padding, and
+corner radius, in that order, in screen pixels:
+
+```json
+"special_floats": [6.0, -2.0, 4.0]
+```
+
+This adds 6 pixels on each side, removes 2 pixels from the top and bottom,
+and rounds the corners with a 4-pixel radius. Padding changes only the
+background, not the text or icon positions. Each omitted value defaults to
+0. Negative padding shrinks the background; if either dimension becomes
+zero or negative, no background is drawn. Zero or negative corner radius
+gives square corners. String and boolean parameters are unused by this effect.
 Effect 0 remains disabled; effect 1 remains Viny Arcs.
 
 For host integration, include only `SkyPrompt/AddOns.hpp` and call the per-text
