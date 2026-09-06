@@ -2,14 +2,23 @@
 #include <algorithm>
 #include <numbers>
 #include <cmath>
+#include <cstdint>
+#include <span>
+#include <string>
 #include <imgui.h>
 
 namespace SkyPrompt::AddOns {
 
     namespace SpecialEffects {
 
+        enum EffectID : uint32_t {
+            kNone = 0,
+            kVinyArcs = 1,
+            kTextBackground = 2
+        };
+
         struct SpecialsView {
-            uint32_t effectID = 0;
+            uint32_t effectID = kNone;
             std::span<const uint32_t>  integers;
             std::span<const std::string> strings;
             std::span<const float>      floats;
@@ -88,7 +97,8 @@ namespace SkyPrompt::AddOns {
 			const auto n_margins = specials.floats.size();
 			const auto margin1 = n_margins > 0 ? specials.floats[0] : 0.0f;
 			const auto margin2 = n_margins > 1 ? specials.floats[1] : 0.0f;
-			line_center += ImVec2{ margin1 * resScale, margin2 * resScale };
+            line_center.x += margin1 * resScale;
+            line_center.y += margin2 * resScale;
 
 			const auto n_bools = specials.bools.size();
 			const auto enable_1 = n_bools > 0 ? specials.bools[0] : true;
@@ -112,13 +122,41 @@ namespace SkyPrompt::AddOns {
             }
         }
 
+        inline void TextBackground(ImDrawList* draw_list, const ImVec2 text_min, const ImVec2 text_max,
+                                   const float angle, const float alpha, const SpecialsView& specials) {
+            if (text_max.x <= text_min.x || text_max.y <= text_min.y) return;
+            const auto n_floats = specials.floats.size();
+            const ImVec2 padding{n_floats > 0 ? specials.floats[0] : 0.0f,
+                                 n_floats > 1 ? specials.floats[1] : 0.0f};
+            const float rounding = n_floats > 2 ? std::max(specials.floats[2], 0.0f) : 0.0f;
+            const ImVec2 background_min{text_min.x - padding.x, text_min.y - padding.y};
+            const ImVec2 background_max{text_max.x + padding.x, text_max.y + padding.y};
+            if (background_max.x <= background_min.x || background_max.y <= background_min.y) return;
+            auto color = specials.integers.empty() ? IM_COL32(0, 0, 0, 128) : specials.integers.front();
+            const auto opacity = static_cast<ImU32>(std::lround(
+                ((color & IM_COL32_A_MASK) >> IM_COL32_A_SHIFT) * std::clamp(alpha, 0.0f, 1.0f)));
+            color = (color & ~IM_COL32_A_MASK) | (opacity << IM_COL32_A_SHIFT);
+            const auto first_vertex = draw_list->VtxBuffer.Size;
+            draw_list->AddRectFilled(background_min, background_max, color, rounding);
+            if (angle == 0.0f) return;
+
+            const ImVec2 center{(text_min.x + text_max.x) * 0.5f, (text_min.y + text_max.y) * 0.5f};
+            const float cosine = std::cos(angle);
+            const float sine = std::sin(angle);
+            for (auto i = first_vertex; i < draw_list->VtxBuffer.Size; ++i) {
+                auto& position = draw_list->VtxBuffer[i].pos;
+                const float x = position.x - center.x;
+                const float y = position.y - center.y;
+                position = {center.x + x * cosine - y * sine, center.y + x * sine + y * cosine};
+            }
+        }
     }
 
 
 
     inline void RenderSpecialEffect(const SpecialEffects::SpecialsView& a_specials, const ImVec2 a_center, const float a_size, const float resScale) {
         switch (a_specials.effectID) {
-            case 1: {
+            case SpecialEffects::kVinyArcs: {
                 const float semicircle_radius = a_size * 4;
                 const float thickness         = 3.0f * resScale;
                 constexpr float line_start_angle   = -std::numbers::pi_v<float> / 2.0f;
@@ -127,7 +165,7 @@ namespace SkyPrompt::AddOns {
                 SpecialEffects::VinyArcs(
                     ImGui::GetBackgroundDrawList(),
                     resScale,
-                    a_center - ImVec2(semicircle_radius/2.f,0),
+                    ImVec2(a_center.x - semicircle_radius / 2.f, a_center.y),
                     semicircle_radius,
                     thickness,
                     line_start_angle,
@@ -137,6 +175,14 @@ namespace SkyPrompt::AddOns {
                 break;
             }
             default: break;
+        }
+    }
+
+    inline void RenderSpecialEffect(const SpecialEffects::SpecialsView& specials, ImDrawList* draw_list,
+                                    const ImVec2 text_min, const ImVec2 text_max,
+                                    const float angle = 0.0f, const float alpha = 1.0f) {
+        if (specials.effectID == SpecialEffects::kTextBackground) {
+            SpecialEffects::TextBackground(draw_list, text_min, text_max, angle, alpha, specials);
         }
     }
 
