@@ -255,12 +255,17 @@ Viny Arcs supplies its own opacity.
 
 ## Adding More Effects
 
-Effects are C++ drawing functions. Their code and dispatch currently live in
-[`include/SkyPrompt/AddOns.hpp`](https://github.com/QTR-Modding/SkyPromptAddOn/blob/main/include/SkyPrompt/AddOns.hpp).
+Effects are C++ drawing functions. Each effect has its own header under
+[`include/SkyPrompt/Effects/`](https://github.com/QTR-Modding/SkyPromptAddOn/tree/main/include/SkyPrompt/Effects).
+Keep helpers used only by that effect in the same header. `Drawing.hpp` contains
+shared drawing and parameter helpers; `Types.hpp` defines the IDs and settings view.
+[`AddOns.hpp`](https://github.com/QTR-Modding/SkyPromptAddOn/blob/main/include/SkyPrompt/AddOns.hpp)
+includes the effects and connects them to SkyPrompt's drawing calls. Consumers
+can continue to include only `SkyPrompt/AddOns.hpp`.
 
-1. Choose an unused ID from the [shared list](#overview), and add a named entry to `SpecialEffects::EffectID`.
-2. Add your drawing function inside `SpecialEffects`. Keep its helpers together with the effect.
-3. Call it from the appropriate entry point below. Effects that need group boundaries or full display bounds also need SkyPrompt to supply that geometry.
+1. Choose an unused ID from the [shared list](#overview), and add a named entry to `SpecialEffects::EffectID` in `Effects/Types.hpp`. Keep existing IDs unchanged and include your new ID in the shared list.
+2. Create `Effects/YourEffect.hpp` with your drawing function inside `SkyPrompt::AddOns::SpecialEffects`. Include `Types.hpp`, or `Drawing.hpp` when using its shared helpers, and the dependencies your header uses. Add the header to `cmake/headerlist.cmake`.
+3. Include your header in `AddOns.hpp` and call it from the appropriate entry point below. Effects that need group boundaries or full display bounds also need SkyPrompt to supply that geometry.
 4. Document its ID, parameter order, defaults, and a theme example on this page. Include those changes in your AddOn pull request.
 
 SkyPrompt passes settings through `SpecialsView`: `integers`, `floats`, `bools`,
@@ -296,10 +301,17 @@ the configured opacity by `alpha` (0-1).
 This example uses ID 8; it is not an effect included with SkyPrompt.
 Confirm the ID is still unused before adding it.
 
-Add `kOutlineCircle = 8` to `SpecialEffects::EffectID`, then add this function
-inside `SpecialEffects`, before the dispatch functions:
+Add `kOutlineCircle = 8` to `SpecialEffects::EffectID` in `Effects/Types.hpp`.
+Create `Effects/OutlineCircle.hpp`:
 
 ```cpp
+#pragma once
+#include "Types.hpp"
+#include <algorithm>
+#include <imgui.h>
+
+namespace SkyPrompt::AddOns::SpecialEffects {
+
 inline void OutlineCircle(ImDrawList* drawList, const ImVec2 center,
                           const float size, const float resolutionScale,
                           const SpecialsView& specials) {
@@ -314,9 +326,13 @@ inline void OutlineCircle(ImDrawList* drawList, const ImVec2 center,
     drawList->AddCircle(center, size * radiusMultiplier, color, 0,
                        thickness * resolutionScale);
 }
+
+}
 ```
 
-Add a case to the four-argument `RenderSpecialEffect` switch:
+Add the new header to `cmake/headerlist.cmake`. In `AddOns.hpp`, add
+`#include "Effects/OutlineCircle.hpp"` and a case to the four-argument
+`RenderSpecialEffect` switch:
 
 ```cpp
 case SpecialEffects::kOutlineCircle:
