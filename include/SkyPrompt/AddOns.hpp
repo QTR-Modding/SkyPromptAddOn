@@ -14,6 +14,8 @@ namespace SkyPrompt::AddOns {
     namespace SpecialEffects {
 
         inline constexpr size_t maxGradientColors = 3;
+        inline constexpr float defaultGradientSpeed = 0.0f;
+        inline constexpr float maxGradientSpeed = 10.0f;
 
         enum EffectID : uint32_t {
             kNone = 0,
@@ -87,14 +89,29 @@ namespace SkyPrompt::AddOns {
                 for (const auto& vertex : mesh) draw_list->PrimVtx(vertex.pos, vertex.uv, vertex.col);
             }
 
+            inline ImVec4 BlendColor(const ImVec4 first, const ImVec4 second, const float blend) {
+                return {std::lerp(first.x, second.x, blend), std::lerp(first.y, second.y, blend),
+                        std::lerp(first.z, second.z, blend), std::lerp(first.w, second.w, blend)};
+            }
+
             inline void ApplyGradient(ImDrawList* draw_list, const int first_vertex, const int first_index, const ImVec2 start,
-                                      const ImVec2 end, const std::span<const uint32_t> colors) {
+                                      const ImVec2 end, const std::span<const uint32_t> colors, const float animation_speed) {
                 if (colors.size() < 2) return;
                 const ImVec2 direction{end.x - start.x, end.y - start.y};
                 const float length_squared = direction.x * direction.x + direction.y * direction.y;
                 if (length_squared <= 0.0f) return;
                 if (colors.size() == maxGradientColors) {
                     SplitGradientMesh(draw_list, first_vertex, first_index, start, direction, length_squared);
+                }
+                double phase = animation_speed == 0.0f ? 0.0 : std::fmod(ImGui::GetTime() * animation_speed, 1.0);
+                if (phase < 0.0) phase += 1.0;
+                const float offset = static_cast<float>(phase * colors.size());
+                std::array<ImVec4, maxGradientColors> stops;
+                for (size_t i = 0; i < colors.size(); ++i) {
+                    const float position = i + offset;
+                    const size_t index = static_cast<size_t>(position) % colors.size();
+                    stops[i] = BlendColor(ImGui::ColorConvertU32ToFloat4(colors[index]),
+                        ImGui::ColorConvertU32ToFloat4(colors[(index + 1) % colors.size()]), position - std::floor(position));
                 }
                 constexpr float maximumAlpha = IM_COL32_A_MASK >> IM_COL32_A_SHIFT;
                 for (int i = first_vertex; i < draw_list->VtxBuffer.Size; ++i) {
@@ -103,12 +120,8 @@ namespace SkyPrompt::AddOns {
                         (vertex.pos.y - start.y) * direction.y) / length_squared, 0.0f, 1.0f) * (colors.size() - 1);
                     const size_t index = std::min(static_cast<size_t>(position), colors.size() - 2);
                     const float blend = position - index;
-                    const auto first = ImGui::ColorConvertU32ToFloat4(colors[index]);
-                    const auto second = ImGui::ColorConvertU32ToFloat4(colors[index + 1]);
-                    const ImVec4 color{first.x + (second.x - first.x) * blend,
-                        first.y + (second.y - first.y) * blend, first.z + (second.z - first.z) * blend,
-                        (first.w + (second.w - first.w) * blend) *
-                            ((vertex.col & IM_COL32_A_MASK) >> IM_COL32_A_SHIFT) / maximumAlpha};
+                    auto color = BlendColor(stops[index], stops[index + 1], blend);
+                    color.w *= ((vertex.col & IM_COL32_A_MASK) >> IM_COL32_A_SHIFT) / maximumAlpha;
                     vertex.col = ImGui::ColorConvertFloat4ToU32(color);
                 }
             }
@@ -182,7 +195,7 @@ namespace SkyPrompt::AddOns {
         }
 
         struct Separator {
-            enum FloatIndex : uint32_t { kThickness, kSpacing, kExtension, kRounding };
+            enum FloatIndex : uint32_t { kThickness, kSpacing, kExtension, kRounding, kAnimationSpeed };
             static constexpr float defaultThickness = 2.0f;
             static constexpr float defaultSpacing = 12.0f;
             static constexpr float defaultExtension = 0.0f;
@@ -198,6 +211,7 @@ namespace SkyPrompt::AddOns {
             float spacing;
             float extension;
             float rounding;
+            float animationSpeed;
             std::span<const uint32_t> colors;
 
             explicit Separator(const SpecialsView& specials) :
@@ -205,6 +219,7 @@ namespace SkyPrompt::AddOns {
                 spacing(ReadFloat(specials, kSpacing, defaultSpacing, 0.0f, maxSpacing)),
                 extension(ReadFloat(specials, kExtension, defaultExtension, minExtension, maxExtension)),
                 rounding(ReadFloat(specials, kRounding, defaultRounding, 0.0f, maxRounding)),
+                animationSpeed(ReadFloat(specials, kAnimationSpeed, defaultGradientSpeed, -maxGradientSpeed, maxGradientSpeed)),
                 colors(specials.integers.first(std::min(specials.integers.size(), maxGradientColors))) {}
 
             bool IsVisible() const { return thickness > 0.0f && HasVisibleColor(colors, defaultColor); }
@@ -243,12 +258,12 @@ namespace SkyPrompt::AddOns {
                                     line_start.y + (relative.x * y + relative.y * x) / length};
                     }
                 }
-                ApplyGradient(draw_list, first_vertex, first_index, line_start, line_end, colors);
+                ApplyGradient(draw_list, first_vertex, first_index, line_start, line_end, colors, animationSpeed);
             }
         };
 
         struct Frame {
-            enum FloatIndex : uint32_t { kPaddingX, kPaddingY, kRounding, kThickness };
+            enum FloatIndex : uint32_t { kPaddingX, kPaddingY, kRounding, kThickness, kAnimationSpeed };
             static constexpr float defaultPaddingX = 8.0f;
             static constexpr float defaultPaddingY = 8.0f;
             static constexpr float defaultRounding = 4.0f;
@@ -262,6 +277,7 @@ namespace SkyPrompt::AddOns {
             ImVec2 padding;
             float rounding;
             float thickness;
+            float animationSpeed;
             std::span<const uint32_t> colors;
 
             explicit Frame(const SpecialsView& specials) :
@@ -269,6 +285,7 @@ namespace SkyPrompt::AddOns {
                         ReadFloat(specials, kPaddingY, defaultPaddingY, minPadding, maxPadding)},
                 rounding(ReadFloat(specials, kRounding, defaultRounding, 0.0f, maxRounding)),
                 thickness(ReadFloat(specials, kThickness, defaultThickness, 0.0f, maxThickness)),
+                animationSpeed(ReadFloat(specials, kAnimationSpeed, defaultGradientSpeed, -maxGradientSpeed, maxGradientSpeed)),
                 colors(specials.integers.first(std::min(specials.integers.size(), maxGradientColors))) {}
 
             void Draw(ImDrawList* draw_list, const ImVec2 minimum, const ImVec2 maximum, const float alpha) const {
@@ -283,7 +300,7 @@ namespace SkyPrompt::AddOns {
                 const int first_vertex = draw_list->VtxBuffer.Size;
                 const int first_index = draw_list->IdxBuffer.Size;
                 draw_list->AddRect(frame_min, frame_max, faded_color, rounding, 0, thickness);
-                ApplyGradient(draw_list, first_vertex, first_index, frame_min, {frame_max.x, frame_min.y}, colors);
+                ApplyGradient(draw_list, first_vertex, first_index, frame_min, {frame_max.x, frame_min.y}, colors, animationSpeed);
             }
         };
 

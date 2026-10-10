@@ -156,6 +156,7 @@ The color is white with roughly 50% opacity.
 | `special_floats` | 1 | Minimum space on each side of the line in screen pixels, from 0 to 500 | `12.0` |
 | `special_floats` | 2 | Extension of each end in screen pixels, from -500 to 500 | `0.0` |
 | `special_floats` | 3 | Corner radius in screen pixels, from 0 to 500 | `0.0` |
+| `special_floats` | 4 | Gradient animation speed in color cycles per second, from -10 to 10 | `0.0` |
 | `special_integers` | 0 | Line color, including opacity | `2164260863` (white, alpha 128) |
 
 The theme's normal prompt spacing is kept if it already provides more room.
@@ -187,6 +188,7 @@ and draws a 2-pixel white border with roughly 50% opacity.
 | `special_floats` | 1 | Vertical padding per side in screen pixels, from -500 to 500 | `8.0` |
 | `special_floats` | 2 | Corner radius in screen pixels, from 0 to 500 | `4.0` |
 | `special_floats` | 3 | Border thickness in screen pixels, from 0 to 100 | `2.0` |
+| `special_floats` | 4 | Gradient animation speed in color cycles per second, from -10 to 10 | `0.0` |
 | `special_integers` | 0 | Border color, including opacity | `2164260863` (white, alpha 128) |
 
 Negative padding moves the border inward without moving the prompts. If either
@@ -218,6 +220,30 @@ Each color includes its own opacity. Additional colors after the third are ignor
 In the Theme editor, use Line Color or Border Color, then Color 2 and Color 3.
 An unset color initially matches the previous one. Matching all colors gives a
 solid color. Export Theme saves the resulting values for JSON.
+
+### Animated Gradients
+
+Add a fifth float to animate either effect. This separator completes one color
+cycle every four seconds:
+
+```json
+{
+    "special_effect": 6,
+    "special_floats": [6.0, 12.0, 0.0, 3.0, 0.25],
+    "special_integers": [4278190335, 4278255360, 4294901760]
+}
+```
+
+The first four floats still control thickness, spacing, extension, and corner
+radius. The fifth is Animation Speed: `0.25` means a quarter cycle per second.
+The colors blend smoothly into each other's positions while the line stays still.
+Use `0` for a static gradient or a negative speed to reverse the color cycle.
+At least two different colors are needed to see a change.
+
+For Frame, keep its own first four floats and append the speed in the same way:
+`"special_floats": [8.0, 12.0, 4.0, 2.0, 0.25]`. Its border stays in place while
+the colors cycle. Both effects also expose Animation Speed in the Theme editor.
+Existing themes that omit the fifth float remain static.
 
 ### Color Format
 
