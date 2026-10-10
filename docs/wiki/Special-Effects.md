@@ -29,9 +29,11 @@ Effect IDs are shared by SkyPrompt and SkyPromptAddOn. The full list is:
 | 3 | Progress Circle | SkyPrompt |
 | 4 | List Indicators | SkyPrompt |
 | 5 | Activation Pop | SkyPrompt |
+| 6 | Separator | SkyPromptAddOn |
+| 7 | Frame | SkyPromptAddOn |
 
 IDs 3-5 are occupied even though they are not in the AddOn's `EffectID` enum.
-The next unused ID is currently **6**. Check this list and open contributions
+The next unused ID is currently **8**. Check this list and open contributions
 before choosing an ID; published IDs must keep their meaning.
 
 Settings for effects 3-5 are in the
@@ -105,13 +107,97 @@ string settings.
 
 </details>
 
+## Effects 6 and 7: Separator and Frame
+
+This theme draws dividing lines between client groups and a frame around the
+displayed prompts:
+
+```json
+{
+    "name": "Grouped Prompts",
+    "special_effects": [
+        { "special_effect": 6 },
+        { "special_effect": 7 }
+    ]
+}
+```
+
+A client group is a run of neighboring prompts with the same `clientID`.
+For example, one client sends Talk and Trade, and another sends Follow and Wait.
+Separator draws one line between those groups. Frame surrounds all four prompts,
+including their icons. Each effect can also be used on its own.
+
+The prompts must already share the display. Mod authors can use
+[handshakes](https://github.com/QTR-Modding/SkyPromptAPI/wiki/SkyPrompt-API-Tutorial-(cpp)#compatibility-handshakes)
+to allow different clients to appear together. Their shared theme supplies the
+effect settings.
+
+### Effect 6: Separator
+
+Separator works in Vertical, List, and Horizontal layouts. It is disabled in
+Radial and Diamond. In List, it separates only the currently visible client groups.
+
+```json
+{
+    "special_effect": 6,
+    "special_floats": [2.0, 12.0, 6.0],
+    "special_integers": [2164260863]
+}
+```
+
+Add this object to `special_effects`. It gives each line a thickness of 2 pixels,
+leaves at least 12 pixels of space on each side, and extends each end by 6 pixels.
+The color is white with roughly 50% opacity.
+
+| Array | Position | Setting | Default |
+| --- | --- | --- | --- |
+| `special_floats` | 0 | Line thickness in screen pixels, from 0 to 100 | `2.0` |
+| `special_floats` | 1 | Minimum space on each side of the line in screen pixels, from 0 to 500 | `12.0` |
+| `special_floats` | 2 | Extension of each end in screen pixels, from -500 to 500 | `0.0` |
+| `special_integers` | 0 | Line color, including opacity | `2164260863` (white, alpha 128) |
+
+The theme's normal prompt spacing is kept if it already provides more room.
+Negative extension shortens the line. Thickness 0 or a transparent color disables
+it without adding space. There are no boolean or string settings.
+
+### Effect 7: Frame
+
+Frame draws an outline around the visible prompt area in every layout. It sizes
+itself to the icons and text. Prompts attached to different objects each have
+their own frame.
+
+```json
+{
+    "special_effect": 7,
+    "special_floats": [8.0, 12.0, 4.0, 2.0],
+    "special_integers": [2164260863]
+}
+```
+
+Add this object to `special_effects`. It leaves 8 pixels of padding on the left
+and right and 12 on the top and bottom, rounds the corners with a 4-pixel radius,
+and draws a 2-pixel white border with roughly 50% opacity.
+
+| Array | Position | Setting | Default |
+| --- | --- | --- | --- |
+| `special_floats` | 0 | Horizontal padding per side in screen pixels, from -500 to 500 | `8.0` |
+| `special_floats` | 1 | Vertical padding per side in screen pixels, from -500 to 500 | `8.0` |
+| `special_floats` | 2 | Corner radius in screen pixels, from 0 to 500 | `4.0` |
+| `special_floats` | 3 | Border thickness in screen pixels, from 0 to 100 | `2.0` |
+| `special_integers` | 0 | Border color, including opacity | `2164260863` (white, alpha 128) |
+
+Negative padding moves the border inward without moving the prompts. If either
+dimension becomes zero or negative, the frame is not drawn. Thickness 0 disables
+it; corner radius 0 gives square corners. Frame has no fill, boolean settings,
+or string settings. Both effects follow the prompts' fade.
+
 ### Color Format
 
 Use the in-game color picker and export the theme to obtain color values for JSON.
 They are unsigned packed ABGR integers, written in decimal. ABGR specifies the
 alpha, blue, green, and red bytes from highest to lowest. Alpha runs from 0
-(transparent) to 255 (opaque); Text Background uses it, while Viny Arcs supplies
-its own opacity.
+(transparent) to 255 (opaque). Text Background, Separator, and Frame use it;
+Viny Arcs supplies its own opacity.
 
 ## Adding More Effects
 
@@ -120,7 +206,7 @@ Effects are C++ drawing functions. Their code and dispatch currently live in
 
 1. Choose an unused ID from the [shared list](#overview), and add a named entry to `SpecialEffects::EffectID`.
 2. Add your drawing function inside `SpecialEffects`. Keep its helpers together with the effect.
-3. Call it from the appropriate `RenderSpecialEffect` overload below.
+3. Call it from the appropriate entry point below. Effects that need group boundaries or full display bounds also need SkyPrompt to supply that geometry.
 4. Document its ID, parameter order, defaults, and a theme example on this page. Include those changes in your AddOn pull request.
 
 SkyPrompt passes settings through `SpecialsView`: `integers`, `floats`, `bools`,
@@ -133,21 +219,30 @@ any of them, so check a value exists before reading it and provide a default.
 | --- | --- | --- |
 | Once around the prompt group | `RenderSpecialEffect(specials, center, size, resolutionScale)` | Viny Arcs |
 | Behind each text label | `RenderSpecialEffect(specials, drawList, textMin, textMax, angle, alpha)` | Text Background |
+| Between client groups | `SpecialEffects::Separator(specials).Draw(drawList, lineStart, lineEnd, alpha)` | Separator |
+| Around the full prompt area | `SpecialEffects::Frame(specials).Draw(drawList, minimum, maximum, alpha)` | Frame |
 
 For text effects, the bounds are unrotated screen-pixel coordinates. Rotate
 around the text's center by `angle` (radians) and multiply opacity by `alpha`
 (0-1) to follow the prompt. Text Background shows how to do both.
 
-Group effects receive the group's anchor, icon size, and resolution scale, but
-not an individual prompt's progress or activation state.
+The four-argument `RenderSpecialEffect` overload receives the group's anchor,
+icon size, and resolution scale, but not an individual prompt's progress or
+activation state.
+
+Separator and Frame use screen-pixel coordinates. SkyPrompt calculates their
+line endpoints and display bounds after laying out the visible prompts. Their
+constructors read `SpecialsView` once; the parsed spacing and padding are also
+available to the layout code. `Draw` applies extension or padding and multiplies
+the configured opacity by `alpha` (0-1).
 
 <details>
 <summary>Example: a circle around the prompt group</summary>
 
-This example uses ID 6; it is not an effect included with SkyPrompt.
+This example uses ID 8; it is not an effect included with SkyPrompt.
 Confirm the ID is still unused before adding it.
 
-Add `kOutlineCircle = 6` to `SpecialEffects::EffectID`, then add this function
+Add `kOutlineCircle = 8` to `SpecialEffects::EffectID`, then add this function
 inside `SpecialEffects`, before the dispatch functions:
 
 ```cpp
@@ -183,7 +278,7 @@ Once the updated AddOn is included in a SkyPrompt build, this theme enables it:
     "name": "Outline Example",
     "special_effects": [
         {
-            "special_effect": 6,
+            "special_effect": 8,
             "special_floats": [2.0],
             "special_integers": [4294967295]
         }

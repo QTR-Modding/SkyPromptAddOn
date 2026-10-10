@@ -14,7 +14,9 @@ namespace SkyPrompt::AddOns {
         enum EffectID : uint32_t {
             kNone = 0,
             kVinyArcs = 1,
-            kTextBackground = 2
+            kTextBackground = 2,
+            kSeparator = 6,
+            kFrame = 7
         };
 
         struct SpecialsView {
@@ -27,6 +29,19 @@ namespace SkyPrompt::AddOns {
 
 
         namespace {
+
+            inline float ReadFloat(const SpecialsView& specials, const uint32_t index, const float fallback,
+                                   const float minimum, const float maximum) {
+                const float value = index < specials.floats.size() ? specials.floats[index] : fallback;
+                return std::isfinite(value) ? std::clamp(value, minimum, maximum) : fallback;
+            }
+
+            inline ImU32 FadeColor(const ImU32 color, const float alpha) {
+                const auto opacity = static_cast<ImU32>(std::lround(
+                    ((color & IM_COL32_A_MASK) >> IM_COL32_A_SHIFT) *
+                    (std::isfinite(alpha) ? std::clamp(alpha, 0.0f, 1.0f) : 0.0f)));
+                return (color & ~IM_COL32_A_MASK) | (opacity << IM_COL32_A_SHIFT);
+            }
 
             void DrawGradientArc(ImDrawList* draw_list, const ImVec2 center, const float radius, const float max_thickness, const ImU32 color,
                                  const float start_angle, const float total_angle, const bool enable_glow, const float min_glow_thickness,
@@ -82,6 +97,78 @@ namespace SkyPrompt::AddOns {
                 }
             }
         }
+
+        struct Separator {
+            enum FloatIndex : uint32_t { kThickness, kSpacing, kExtension };
+            static constexpr float defaultThickness = 2.0f;
+            static constexpr float defaultSpacing = 12.0f;
+            static constexpr float defaultExtension = 0.0f;
+            static constexpr ImU32 defaultColor = IM_COL32(255, 255, 255, 128);
+            static constexpr float maxThickness = 100.0f;
+            static constexpr float maxSpacing = 500.0f;
+            static constexpr float minExtension = -500.0f;
+            static constexpr float maxExtension = 500.0f;
+
+            float thickness;
+            float spacing;
+            float extension;
+            ImU32 color;
+
+            explicit Separator(const SpecialsView& specials) :
+                thickness(ReadFloat(specials, kThickness, defaultThickness, 0.0f, maxThickness)),
+                spacing(ReadFloat(specials, kSpacing, defaultSpacing, 0.0f, maxSpacing)),
+                extension(ReadFloat(specials, kExtension, defaultExtension, minExtension, maxExtension)),
+                color(specials.integers.empty() ? defaultColor : specials.integers.front()) {}
+
+            void Draw(ImDrawList* draw_list, ImVec2 line_start, ImVec2 line_end, const float alpha) const {
+                if (thickness <= 0.0f) return;
+                const float x = line_end.x - line_start.x;
+                const float y = line_end.y - line_start.y;
+                const float length = std::hypot(x, y);
+                if (length <= 0.0f || length + 2.0f * extension <= 0.0f) return;
+                const auto faded_color = FadeColor(color, alpha);
+                if ((faded_color & IM_COL32_A_MASK) == 0) return;
+                const ImVec2 offset{x / length * extension, y / length * extension};
+                line_start = {line_start.x - offset.x, line_start.y - offset.y};
+                line_end = {line_end.x + offset.x, line_end.y + offset.y};
+                draw_list->AddLine(line_start, line_end, faded_color, thickness);
+            }
+        };
+
+        struct Frame {
+            enum FloatIndex : uint32_t { kPaddingX, kPaddingY, kRounding, kThickness };
+            static constexpr float defaultPaddingX = 8.0f;
+            static constexpr float defaultPaddingY = 8.0f;
+            static constexpr float defaultRounding = 4.0f;
+            static constexpr float defaultThickness = 2.0f;
+            static constexpr ImU32 defaultColor = IM_COL32(255, 255, 255, 128);
+            static constexpr float minPadding = -500.0f;
+            static constexpr float maxPadding = 500.0f;
+            static constexpr float maxRounding = 500.0f;
+            static constexpr float maxThickness = 100.0f;
+
+            ImVec2 padding;
+            float rounding;
+            float thickness;
+            ImU32 color;
+
+            explicit Frame(const SpecialsView& specials) :
+                padding{ReadFloat(specials, kPaddingX, defaultPaddingX, minPadding, maxPadding),
+                        ReadFloat(specials, kPaddingY, defaultPaddingY, minPadding, maxPadding)},
+                rounding(ReadFloat(specials, kRounding, defaultRounding, 0.0f, maxRounding)),
+                thickness(ReadFloat(specials, kThickness, defaultThickness, 0.0f, maxThickness)),
+                color(specials.integers.empty() ? defaultColor : specials.integers.front()) {}
+
+            void Draw(ImDrawList* draw_list, const ImVec2 minimum, const ImVec2 maximum, const float alpha) const {
+                if (thickness <= 0.0f || maximum.x <= minimum.x || maximum.y <= minimum.y) return;
+                const ImVec2 frame_min{minimum.x - padding.x, minimum.y - padding.y};
+                const ImVec2 frame_max{maximum.x + padding.x, maximum.y + padding.y};
+                if (frame_max.x <= frame_min.x || frame_max.y <= frame_min.y) return;
+                const auto faded_color = FadeColor(color, alpha);
+                if ((faded_color & IM_COL32_A_MASK) == 0) return;
+                draw_list->AddRect(frame_min, frame_max, faded_color, rounding, 0, thickness);
+            }
+        };
 
 
         inline void VinyArcs(ImDrawList* background_draw_list, const float resScale, ImVec2 line_center,
