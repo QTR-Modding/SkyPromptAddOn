@@ -140,13 +140,14 @@ Radial and Diamond. In List, it separates only the currently visible client grou
 ```json
 {
     "special_effect": 6,
-    "special_floats": [2.0, 12.0, 6.0],
+    "special_floats": [2.0, 12.0, 6.0, 1.0],
     "special_integers": [2164260863]
 }
 ```
 
 Add this object to `special_effects`. It gives each line a thickness of 2 pixels,
-leaves at least 12 pixels of space on each side, and extends each end by 6 pixels.
+leaves at least 12 pixels of space on each side, extends each end by 6 pixels,
+and rounds its corners with a 1-pixel radius.
 The color is white with roughly 50% opacity.
 
 | Array | Position | Setting | Default |
@@ -154,11 +155,13 @@ The color is white with roughly 50% opacity.
 | `special_floats` | 0 | Line thickness in screen pixels, from 0 to 100 | `2.0` |
 | `special_floats` | 1 | Minimum space on each side of the line in screen pixels, from 0 to 500 | `12.0` |
 | `special_floats` | 2 | Extension of each end in screen pixels, from -500 to 500 | `0.0` |
+| `special_floats` | 3 | Corner radius in screen pixels, from 0 to 500 | `0.0` |
 | `special_integers` | 0 | Line color, including opacity | `2164260863` (white, alpha 128) |
 
 The theme's normal prompt spacing is kept if it already provides more room.
-Negative extension shortens the line. Thickness 0 or a transparent color disables
-it without adding space. There are no boolean or string settings.
+Negative extension shortens the line. Corner radius 0 keeps square ends; half
+the thickness gives fully rounded ends. Thickness 0 or all colors being
+transparent disables it without adding space. There are no boolean or string settings.
 
 ### Effect 7: Frame
 
@@ -190,6 +193,31 @@ Negative padding moves the border inward without moving the prompts. If either
 dimension becomes zero or negative, the frame is not drawn. Thickness 0 disables
 it; corner radius 0 gives square corners. Frame has no fill, boolean settings,
 or string settings. Both effects follow the prompts' fade.
+
+### Gradients
+
+Separator and Frame accept up to three colors in `special_integers`. One color
+gives a solid line or border. Two blend from the first color to the second;
+three place the second color halfway between the first and third.
+
+For example, this separator blends from red through green to blue, with rounded ends:
+
+```json
+{
+    "special_effect": 6,
+    "special_floats": [6.0, 12.0, 0.0, 3.0],
+    "special_integers": [4278190335, 4278255360, 4294901760]
+}
+```
+
+The colors run along the separator: left-to-right in Vertical and List, and
+top-to-bottom in Horizontal. Use the same color array on Frame (effect 7) for
+a left-to-right gradient across its border, keeping Frame's own float settings.
+Each color includes its own opacity. Additional colors after the third are ignored.
+
+In the Theme editor, use Line Color or Border Color, then Color 2 and Color 3.
+An unset color initially matches the previous one. Matching all colors gives a
+solid color. Export Theme saves the resulting values for JSON.
 
 ### Color Format
 

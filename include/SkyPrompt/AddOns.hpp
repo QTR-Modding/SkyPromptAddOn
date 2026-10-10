@@ -1,15 +1,19 @@
 #pragma once
 #include <algorithm>
+#include <array>
 #include <numbers>
 #include <cmath>
 #include <cstdint>
 #include <span>
 #include <string>
+#include <vector>
 #include <imgui.h>
 
 namespace SkyPrompt::AddOns {
 
     namespace SpecialEffects {
+
+        inline constexpr size_t maxGradientColors = 3;
 
         enum EffectID : uint32_t {
             kNone = 0,
@@ -29,6 +33,85 @@ namespace SkyPrompt::AddOns {
 
 
         namespace {
+
+            inline bool HasVisibleColor(const std::span<const uint32_t> colors, const ImU32 fallback) {
+                if (colors.empty()) return (fallback & IM_COL32_A_MASK) != 0;
+                return std::any_of(colors.begin(), colors.end(), [](const auto color) { return (color & IM_COL32_A_MASK) != 0; });
+            }
+
+            inline void SplitGradientMesh(ImDrawList* draw_list, const int first_vertex, const int first_index,
+                                          const ImVec2 start, const ImVec2 direction, const float length_squared) {
+                constexpr size_t triangleVertices = 3;
+                constexpr size_t maximumSplitVertices = 9;
+                constexpr float middleStop = 0.5f;
+                const int index_end = draw_list->IdxBuffer.Size;
+                const int vertex_count = draw_list->VtxBuffer.Size - first_vertex;
+                const auto vertex_offset = draw_list->CmdBuffer.back().VtxOffset;
+                std::vector<ImDrawVert> mesh;
+                mesh.reserve((index_end - first_index) / triangleVertices * maximumSplitVertices);
+                for (int i = first_index; i < index_end; i += triangleVertices) {
+                    std::array<ImDrawVert, triangleVertices> triangle;
+                    std::array<float, triangleVertices> positions;
+                    for (size_t j = 0; j < triangleVertices; ++j) {
+                        triangle[j] = draw_list->VtxBuffer[vertex_offset + draw_list->IdxBuffer[i + j]];
+                        positions[j] = ((triangle[j].pos.x - start.x) * direction.x +
+                            (triangle[j].pos.y - start.y) * direction.y) / length_squared;
+                    }
+                    for (const bool lower : {true, false}) {
+                        std::array<ImDrawVert, triangleVertices + 1> polygon;
+                        size_t count = 0;
+                        for (size_t j = 0; j < triangleVertices; ++j) {
+                            const auto next = (j + 1) % triangleVertices;
+                            const bool inside = lower ? positions[j] <= middleStop : positions[j] >= middleStop;
+                            const bool next_inside = lower ? positions[next] <= middleStop : positions[next] >= middleStop;
+                            if (inside) polygon[count++] = triangle[j];
+                            if (inside == next_inside) continue;
+                            const float blend = (middleStop - positions[j]) / (positions[next] - positions[j]);
+                            const auto& first = triangle[j];
+                            const auto& second = triangle[next];
+                            auto color = ImGui::ColorConvertU32ToFloat4(first.col);
+                            color.w += (ImGui::ColorConvertU32ToFloat4(second.col).w - color.w) * blend;
+                            polygon[count++] = {{first.pos.x + (second.pos.x - first.pos.x) * blend,
+                                first.pos.y + (second.pos.y - first.pos.y) * blend},
+                                {first.uv.x + (second.uv.x - first.uv.x) * blend,
+                                first.uv.y + (second.uv.y - first.uv.y) * blend}, ImGui::ColorConvertFloat4ToU32(color)};
+                        }
+                        for (size_t j = 1; j + 1 < count; ++j) {
+                            mesh.insert(mesh.end(), {polygon[0], polygon[j], polygon[j + 1]});
+                        }
+                    }
+                }
+                draw_list->PrimUnreserve(index_end - first_index, vertex_count);
+                draw_list->_VtxCurrentIdx -= vertex_count;
+                draw_list->PrimReserve(static_cast<int>(mesh.size()), static_cast<int>(mesh.size()));
+                for (const auto& vertex : mesh) draw_list->PrimVtx(vertex.pos, vertex.uv, vertex.col);
+            }
+
+            inline void ApplyGradient(ImDrawList* draw_list, const int first_vertex, const int first_index, const ImVec2 start,
+                                      const ImVec2 end, const std::span<const uint32_t> colors) {
+                if (colors.size() < 2) return;
+                const ImVec2 direction{end.x - start.x, end.y - start.y};
+                const float length_squared = direction.x * direction.x + direction.y * direction.y;
+                if (length_squared <= 0.0f) return;
+                if (colors.size() == maxGradientColors) {
+                    SplitGradientMesh(draw_list, first_vertex, first_index, start, direction, length_squared);
+                }
+                constexpr float maximumAlpha = IM_COL32_A_MASK >> IM_COL32_A_SHIFT;
+                for (int i = first_vertex; i < draw_list->VtxBuffer.Size; ++i) {
+                    auto& vertex = draw_list->VtxBuffer[i];
+                    const float position = std::clamp(((vertex.pos.x - start.x) * direction.x +
+                        (vertex.pos.y - start.y) * direction.y) / length_squared, 0.0f, 1.0f) * (colors.size() - 1);
+                    const size_t index = std::min(static_cast<size_t>(position), colors.size() - 2);
+                    const float blend = position - index;
+                    const auto first = ImGui::ColorConvertU32ToFloat4(colors[index]);
+                    const auto second = ImGui::ColorConvertU32ToFloat4(colors[index + 1]);
+                    const ImVec4 color{first.x + (second.x - first.x) * blend,
+                        first.y + (second.y - first.y) * blend, first.z + (second.z - first.z) * blend,
+                        (first.w + (second.w - first.w) * blend) *
+                            ((vertex.col & IM_COL32_A_MASK) >> IM_COL32_A_SHIFT) / maximumAlpha};
+                    vertex.col = ImGui::ColorConvertFloat4ToU32(color);
+                }
+            }
 
             inline float ReadFloat(const SpecialsView& specials, const uint32_t index, const float fallback,
                                    const float minimum, const float maximum) {
@@ -99,39 +182,68 @@ namespace SkyPrompt::AddOns {
         }
 
         struct Separator {
-            enum FloatIndex : uint32_t { kThickness, kSpacing, kExtension };
+            enum FloatIndex : uint32_t { kThickness, kSpacing, kExtension, kRounding };
             static constexpr float defaultThickness = 2.0f;
             static constexpr float defaultSpacing = 12.0f;
             static constexpr float defaultExtension = 0.0f;
+            static constexpr float defaultRounding = 0.0f;
             static constexpr ImU32 defaultColor = IM_COL32(255, 255, 255, 128);
             static constexpr float maxThickness = 100.0f;
             static constexpr float maxSpacing = 500.0f;
             static constexpr float minExtension = -500.0f;
             static constexpr float maxExtension = 500.0f;
+            static constexpr float maxRounding = 500.0f;
 
             float thickness;
             float spacing;
             float extension;
-            ImU32 color;
+            float rounding;
+            std::span<const uint32_t> colors;
 
             explicit Separator(const SpecialsView& specials) :
                 thickness(ReadFloat(specials, kThickness, defaultThickness, 0.0f, maxThickness)),
                 spacing(ReadFloat(specials, kSpacing, defaultSpacing, 0.0f, maxSpacing)),
                 extension(ReadFloat(specials, kExtension, defaultExtension, minExtension, maxExtension)),
-                color(specials.integers.empty() ? defaultColor : specials.integers.front()) {}
+                rounding(ReadFloat(specials, kRounding, defaultRounding, 0.0f, maxRounding)),
+                colors(specials.integers.first(std::min(specials.integers.size(), maxGradientColors))) {}
+
+            bool IsVisible() const { return thickness > 0.0f && HasVisibleColor(colors, defaultColor); }
 
             void Draw(ImDrawList* draw_list, ImVec2 line_start, ImVec2 line_end, const float alpha) const {
-                if (thickness <= 0.0f) return;
+                if (!IsVisible()) return;
                 const float x = line_end.x - line_start.x;
                 const float y = line_end.y - line_start.y;
                 const float length = std::hypot(x, y);
                 if (length <= 0.0f || length + 2.0f * extension <= 0.0f) return;
-                const auto faded_color = FadeColor(color, alpha);
+                const auto faded_color = FadeColor(colors.size() > 1 ? IM_COL32_WHITE :
+                    colors.empty() ? defaultColor : colors.front(), alpha);
                 if ((faded_color & IM_COL32_A_MASK) == 0) return;
                 const ImVec2 offset{x / length * extension, y / length * extension};
                 line_start = {line_start.x - offset.x, line_start.y - offset.y};
                 line_end = {line_end.x + offset.x, line_end.y + offset.y};
-                draw_list->AddLine(line_start, line_end, faded_color, thickness);
+                const int first_vertex = draw_list->VtxBuffer.Size;
+                const int first_index = draw_list->IdxBuffer.Size;
+                if (rounding == 0.0f) {
+                    draw_list->AddLine(line_start, line_end, faded_color, thickness);
+                } else {
+                    const float half_thickness = thickness * 0.5f;
+                    const ImVec2 minimum{line_start.x, line_start.y - half_thickness};
+                    const ImVec2 maximum{line_start.x + length + 2.0f * extension, line_start.y + half_thickness};
+                    const float radius = std::min({rounding, half_thickness, (maximum.x - minimum.x) * 0.5f});
+                    constexpr float quarter_turn = std::numbers::pi_v<float> * 0.5f;
+                    draw_list->PathArcTo({maximum.x - radius, maximum.y - radius}, radius, 0.0f, quarter_turn);
+                    draw_list->PathArcTo({minimum.x + radius, maximum.y - radius}, radius, quarter_turn, quarter_turn * 2.0f);
+                    draw_list->PathArcTo({minimum.x + radius, minimum.y + radius}, radius, quarter_turn * 2.0f, quarter_turn * 3.0f);
+                    draw_list->PathArcTo({maximum.x - radius, minimum.y + radius}, radius, quarter_turn * 3.0f, quarter_turn * 4.0f);
+                    draw_list->PathFillConvex(faded_color);
+                    for (int i = first_vertex; i < draw_list->VtxBuffer.Size; ++i) {
+                        auto& position = draw_list->VtxBuffer[i].pos;
+                        const ImVec2 relative{position.x - line_start.x, position.y - line_start.y};
+                        position = {line_start.x + (relative.x * x - relative.y * y) / length,
+                                    line_start.y + (relative.x * y + relative.y * x) / length};
+                    }
+                }
+                ApplyGradient(draw_list, first_vertex, first_index, line_start, line_end, colors);
             }
         };
 
@@ -150,23 +262,28 @@ namespace SkyPrompt::AddOns {
             ImVec2 padding;
             float rounding;
             float thickness;
-            ImU32 color;
+            std::span<const uint32_t> colors;
 
             explicit Frame(const SpecialsView& specials) :
                 padding{ReadFloat(specials, kPaddingX, defaultPaddingX, minPadding, maxPadding),
                         ReadFloat(specials, kPaddingY, defaultPaddingY, minPadding, maxPadding)},
                 rounding(ReadFloat(specials, kRounding, defaultRounding, 0.0f, maxRounding)),
                 thickness(ReadFloat(specials, kThickness, defaultThickness, 0.0f, maxThickness)),
-                color(specials.integers.empty() ? defaultColor : specials.integers.front()) {}
+                colors(specials.integers.first(std::min(specials.integers.size(), maxGradientColors))) {}
 
             void Draw(ImDrawList* draw_list, const ImVec2 minimum, const ImVec2 maximum, const float alpha) const {
-                if (thickness <= 0.0f || maximum.x <= minimum.x || maximum.y <= minimum.y) return;
+                if (thickness <= 0.0f || !HasVisibleColor(colors, defaultColor) ||
+                    maximum.x <= minimum.x || maximum.y <= minimum.y) return;
                 const ImVec2 frame_min{minimum.x - padding.x, minimum.y - padding.y};
                 const ImVec2 frame_max{maximum.x + padding.x, maximum.y + padding.y};
                 if (frame_max.x <= frame_min.x || frame_max.y <= frame_min.y) return;
-                const auto faded_color = FadeColor(color, alpha);
+                const auto faded_color = FadeColor(colors.size() > 1 ? IM_COL32_WHITE :
+                    colors.empty() ? defaultColor : colors.front(), alpha);
                 if ((faded_color & IM_COL32_A_MASK) == 0) return;
+                const int first_vertex = draw_list->VtxBuffer.Size;
+                const int first_index = draw_list->IdxBuffer.Size;
                 draw_list->AddRect(frame_min, frame_max, faded_color, rounding, 0, thickness);
+                ApplyGradient(draw_list, first_vertex, first_index, frame_min, {frame_max.x, frame_min.y}, colors);
             }
         };
 
